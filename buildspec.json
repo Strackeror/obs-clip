@@ -36,10 +36,10 @@
             "bundleId": "com.example.obs-plugintemplate"
         }
     },
-    "name": "obs-plugintemplate",
-    "displayName": "OBS Plugin Template",
+    "name": "obs-clipplugin",
+    "displayName": "OBS Clip Plugin",
     "version": "1.0.0",
-    "author": "Your Name Here",
+    "author": "Strackeror",
     "website": "https://example.com",
     "email": "me@example.com",
     "uuids": {
