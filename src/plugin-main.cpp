@@ -24,8 +24,27 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <format>
 #include <thread>
 
+#include "MinHook.h"
+
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
+
+extern "C" {
+bool os_inhibit_sleep_set_active(void *info, bool active);
+}
+
+bool sleep_detour(void *, bool)
+{
+	return false;
+}
+
+void disable_sleep_lock()
+{
+	void *original;
+	MH_CreateHook((void *)os_inhibit_sleep_set_active, (void *)sleep_detour,
+		      &original);
+	MH_EnableHook((void *)os_inhibit_sleep_set_active);
+}
 
 void restart_replay_buffer()
 {
@@ -126,6 +145,7 @@ extern "C" {
 bool obs_module_load(void)
 {
 	obs_log(LOG_INFO, "OBS restart replay on wakeup loaded");
+	disable_sleep_lock();
 	std::thread{load_thread}.detach();
 	obs_frontend_add_event_callback(event_callback, nullptr);
 	return true;

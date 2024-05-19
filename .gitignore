@@ -7,6 +7,7 @@
 !/cmake
 !/data
 !/src
+!/deps
 !.clang-format
 !.cmake-format.json
 !.gitignore
@@ -24,3 +25,5 @@
 
 # Exclude CMake build number cache
 /cmake/.CMakeBuildNumber
+
+/deps/*/build

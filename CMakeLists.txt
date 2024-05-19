@@ -11,7 +11,11 @@ include(compilerconfig)
 include(defaults)
 include(helpers)
 
+add_subdirectory(deps/minhook)
+
 add_library(${CMAKE_PROJECT_NAME} MODULE)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE minhook)
+
 set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY CXX_STANDARD 23)
 
 find_package(libobs REQUIRED)
