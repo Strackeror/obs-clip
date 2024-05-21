@@ -16,9 +16,11 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
+#include <algorithm>
 #include <obs-frontend-api.h>
 #include <obs-module.h>
 #include <plugin-support.h>
+#include <string>
 #include <windows.h>
 #include <filesystem>
 #include <format>
@@ -41,9 +43,21 @@ bool sleep_detour(void *, bool)
 void disable_sleep_lock()
 {
 	void *original;
-	MH_CreateHook((void *)os_inhibit_sleep_set_active, (void *)sleep_detour,
-		      &original);
-	MH_EnableHook((void *)os_inhibit_sleep_set_active);
+	auto status = MH_CreateHook((void *)os_inhibit_sleep_set_active,
+				    (void *)sleep_detour, &original);
+	if (status != MH_OK) {
+		obs_log(LOG_ERROR, std::format("failed to create hook, err:{}",
+					       (int)status)
+					   .c_str());
+		return;
+	}
+	status = MH_EnableHook((void *)os_inhibit_sleep_set_active);
+	if (status != MH_OK) {
+		obs_log(LOG_ERROR,
+			std::format("failed enable hook, err:{}", (int)status)
+				.c_str());
+		return;
+	}
 }
 
 void restart_replay_buffer()
@@ -62,36 +76,68 @@ void restart_replay_buffer()
 	}
 }
 
+bool valid_char(char c)
+{
+	if (c >= '0' && c <= '9')
+		return true;
+	if (c >= 'a' && c <= 'z')
+		return true;
+	if (c >= 'A' && c <= 'Z')
+		return true;
+	if (c == '-' || c == '_' || c == ' ' || c == '.')
+		return true;
+	return false;
+}
+
+auto get_current_window_name() -> std::optional<std::string>
+{
+	auto window = GetForegroundWindow();
+
+	unsigned long pid;
+	if (GetWindowThreadProcessId(window, &pid) == 0)
+		return {};
+	obs_log(LOG_INFO, std::format("process id:{}", pid).c_str());
+	auto handle =
+		OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+	if (!handle) {
+		char title_buf[256]{};
+		if (!GetWindowTextA(window, title_buf, 256))
+			return {};
+
+		std::string title{title_buf};
+		std::replace_if(
+			title.begin(), title.end(),
+			[](char c) { return !valid_char(c); }, '_');
+		return title;
+	}
+
+	WCHAR buf[1024] = {};
+	DWORD bufSize = 1024;
+	if (!QueryFullProcessImageName(handle, 0, buf, &bufSize)) {
+		return {};
+	}
+	auto process_name =
+		std::filesystem::path{buf}.filename().replace_extension();
+	obs_log(LOG_INFO,
+		std::format("process name:{}", process_name.string()).c_str());
+	return process_name.string();
+}
+
 void rename_replay()
 {
 	try {
-		auto window = GetForegroundWindow();
-		unsigned long pid;
-		if (GetWindowThreadProcessId(window, &pid) == 0)
-			return;
-		obs_log(LOG_INFO, std::format("process id:{}", pid).c_str());
-		auto handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
-					  false, pid);
-		if (!handle)
-			return;
-
-		WCHAR buf[1024] = {};
-		DWORD bufSize = 1024;
-		if (!QueryFullProcessImageName(handle, 0, buf, &bufSize)) {
+		auto window_name_opt = get_current_window_name();
+		if (!window_name_opt) {
 			return;
 		}
-		auto process_name = std::filesystem::path{buf}
-					    .filename()
-					    .replace_extension();
-		obs_log(LOG_INFO,
-			std::format("process name:{}", process_name.string())
-				.c_str());
+
+		auto &window_name = *window_name_opt;
 
 		std::filesystem::path path = obs_frontend_get_last_replay();
 		auto new_path = path;
 		new_path.replace_filename(
 			path.filename().replace_extension().string() + "-" +
-			process_name.string() + path.extension().string());
+			window_name + path.extension().string());
 		obs_log(LOG_INFO,
 			std::format("replay name: {}, new replay name: {}",
 				    path.string(), new_path.string())
