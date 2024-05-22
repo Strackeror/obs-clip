@@ -25,33 +25,46 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <filesystem>
 #include <format>
 #include <thread>
-
 #include "MinHook.h"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
-extern "C" {
-bool os_inhibit_sleep_set_active(void *info, bool active);
-}
-
 bool sleep_detour(void *, bool)
 {
+	obs_log(LOG_INFO, "Prevented sleep");
 	return false;
 }
 
 void disable_sleep_lock()
 {
+	auto obs_dll = LoadLibraryA("obs.dll");
+	if (!obs_dll) {
+		obs_log(LOG_ERROR, "failed to load obs.dll");
+		return;
+	}
+
+	void *dll_func =
+		(void *)GetProcAddress(obs_dll, "os_inhibit_sleep_set_active");
+
 	void *original;
-	auto status = MH_CreateHook((void *)os_inhibit_sleep_set_active,
-				    (void *)sleep_detour, &original);
+	auto status = MH_Initialize();
+	if (status != MH_OK) {
+		obs_log(LOG_ERROR, std::format("failed to init minhook, err:{}",
+					       (int)status)
+					   .c_str());
+		return;
+	}
+
+	status = MH_CreateHook((void *)dll_func, (void *)sleep_detour,
+			       &original);
 	if (status != MH_OK) {
 		obs_log(LOG_ERROR, std::format("failed to create hook, err:{}",
 					       (int)status)
 					   .c_str());
 		return;
 	}
-	status = MH_EnableHook((void *)os_inhibit_sleep_set_active);
+	status = MH_EnableHook((void *)dll_func);
 	if (status != MH_OK) {
 		obs_log(LOG_ERROR,
 			std::format("failed enable hook, err:{}", (int)status)
